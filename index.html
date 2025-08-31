@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>To-Do List - Utenti Separati</title>
+  <!-- Manifest -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#3498db">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- Service Worker -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('SW registrato'))
+        .catch(err => console.log('Errore SW:', err));
+    });
+  }
+</script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      background: #f7f9fc;
+    }
+    .hidden { display: none; }
+    .task {
+      padding: 14px;
+      margin: 8px 0;
+      background: white;
+      border-left: 5px solid #3498db;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .completed { opacity: 0.6; text-decoration: line-through; color: #888; }
+    input, button, select {
+      padding: 10px;
+      margin: 5px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    button {
+      background: #3498db;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover { background: #2980b9; }
+    ul { list-style: none; }
+    .calendar {
+      margin-top: 20px;
+      padding: 15px;
+      background: #e8f5e8;
+      border-radius: 10px;
+      border: 1px solid #d0ebd0;
+    }
+    .calendar h4 { margin-bottom: 10px; color: #2e7d32; }
+    .user-info {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+  .container, body {
+    margin: 10px;
+    font-size: 14px;
+  }
+  input, button {
+    font-size: 16px;
+    padding: 12px;
+  }
+  .task {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .task-actions {
+    align-self: flex-end;
+  }
+}
+  </style>
+</head>
+<body>
+
+  <!-- Schermata Registrazione -->
+  <div id="registration">
+    <h2>📝 Benvenuto! Registrati</h2>
+    <input type="text" id="usernameInput" placeholder="Il tuo nome" />
+    <button id="registerBtn">Inizia</button>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="app" class="hidden">
+    <h3>Ciao, <span id="greeting"></span>! 🌟</h3>
+    <div class="user-info">Utente: <strong><span id="userTag"></span></strong></div>
+    <button id="logout">← Cambia Utente</button>
+
+    <div style="margin: 15px 0;">
+      <label><input type="checkbox" id="notify" checked> 🔔 Abilita notifiche</label>
+    </div>
+
+    <div>
+      <input type="text" id="taskInput" placeholder="Nuovo compito" />
+      <input type="text" id="catInput" placeholder="Categoria (es. Lavoro)" />
+      <input type="date" id="dateInput" />
+      <button id="addBtn">➕ Aggiungi</button>
+    </div>
+
+    <ul id="list"></ul>
+
+    <div class="calendar">
+      <h4>📅 Promemoria di Oggi</h4>
+      <div id="todayTasks">Nessun compito in programma per oggi.</div>
+    </div>
+  </div>
+
+  <script>
+    // --- Elementi DOM ---
+    const registration = document.getElementById("registration");
+    const app = document.getElementById("app");
+    const usernameInput = document.getElementById("usernameInput");
+    const registerBtn = document.getElementById("registerBtn");
+    const greeting = document.getElementById("greeting");
+    const userTag = document.getElementById("userTag");
+    const logout = document.getElementById("logout");
+    const taskInput = document.getElementById("taskInput");
+    const catInput = document.getElementById("catInput");
+    const dateInput = document.getElementById("dateInput");
+    const addBtn = document.getElementById("addBtn");
+    const taskList = document.getElementById("list");
+    const todayTasks = document.getElementById("todayTasks");
+    const notify = document.getElementById("notify");
+
+    let currentUser = null;
+    let userTasks = []; // Task dell'utente corrente
+
+    // --- Struttura dati in localStorage ---
+    // {
+    //   currentUser: "Mario",
+    //   users: {
+    //     "Mario": [ {id, text, cat, date, done}, ... ],
+    //     "Luca": [ ... ]
+    //   }
+    // }
+
+    // --- Carica dati ---
+    function load() {
+      const data = localStorage.getItem("todoAppData");
+      if (!data) return; // Nessun dato
+
+      try {
+        const parsed = JSON.parse(data);
+        const lastUser = parsed.currentUser;
+
+        // Ripristina solo se esiste
+        if (parsed.users && lastUser && parsed.users[lastUser]) {
+          usernameInput.value = lastUser;
+
+          // Auto-login?
+          const confirmLogin = confirm(`Riprendi come "${lastUser}"?`);
+          if (confirmLogin) {
+            currentUser = lastUser;
+            userTasks = parsed.users[lastUser];
+            showApp();
+          }
+        }
+      } catch (e) {
+        console.error("Errore nel caricamento dei dati", e);
+      }
+    }
+
+    // --- Registrazione / Login ---
+    registerBtn.addEventListener("click", () => {
+      const name = usernameInput.value.trim();
+      if (!name) return alert("Inserisci un nome!");
+
+      // Carica tutti i dati
+      const data = localStorage.getItem("todoAppData");
+      let appData = { currentUser: null, users: {} };
+      if (data) {
+        try {
+          appData = JSON.parse(data);
+        } catch (e) {
+          appData = { users: {} };
+        }
+      }
+
+      // Se è la prima volta per questo utente, crea array vuoto
+      if (!appData.users[name]) {
+        appData.users[name] = [];
+      }
+
+      // Imposta utente corrente
+      currentUser = name;
+      userTasks = appData.users[name]; // carica i SUOI task
+      appData.currentUser = name;
+
+      // Salva
+      try {
+        localStorage.setItem("todoAppData", JSON.stringify(appData));
+      } catch (e) {
+        return alert("Errore di salvataggio. Assicurati di usare un browser moderno.");
+      }
+
+      showApp();
+    });
+
+    function showApp() {
+      registration.classList.add("hidden");
+      app.classList.remove("hidden");
+      greeting.textContent = currentUser;
+      userTag.textContent = currentUser;
+      render();
+      checkTodayNotifications();
+    }
+
+    // --- Cambia utente ---
+    logout.addEventListener("click", () => {
+      // Salva stato
+      save();
+      // Reset
+      localStorage.removeItem("todoUser"); // non usato
+      location.reload();
+    });
+
+    // --- Aggiungi task ---
+    addBtn.addEventListener("click", () => {
+      const text = taskInput.value.trim();
+      const cat = catInput.value.trim() || "Generale";
+      const date = dateInput.value || new Date().toISOString().split("T")[0];
+
+      if (!text) return alert("Scrivi un compito!");
+
+      userTasks.push({
+        id: Date.now(),
+        text,
+        cat,
+        date,
+        done: false
+      });
+
+      save();
+      render();
+      checkTodayNotifications();
+
+      taskInput.value = "";
+      catInput.value = "";
+    });
+
+    // --- Salva i task dell'utente ---
+    function save() {
+      const data = localStorage.getItem("todoAppData");
+      let appData = { users: {} };
+      if (data) {
+        try {
+          appData = JSON.parse(data);
+        } catch (e) {}
+      }
+
+      // Sovrascrivi solo i task dell'utente corrente
+      appData.users[currentUser] = userTasks;
+      appData.currentUser = currentUser;
+
+      localStorage.setItem("todoAppData", JSON.stringify(appData));
+    }
+
+    // --- Renderizza task ---
+    function render() {
+      taskList.innerHTML = "";
+      const activeTasks = userTasks.filter(t => !t.done);
+      activeTasks.forEach(t => {
+        const li = document.createElement("li");
+        li.className = "task";
+        li.innerHTML = `
+          <span><strong>${t.text}</strong> 
+          <em style="color:#555; font-size:0.9em;"> | 🏷️ ${t.cat} | 📅 ${formatDate(t.date)}</em>
+          </span>
+          <div>
+            <button onclick="complete(${t.id})">✅ Completa</button>
+            <button onclick="remove(${t.id})">🗑️ Elimina</button>
+          </div>
+        `;
+        taskList.appendChild(li);
+      });
+
+      renderCalendar();
+    }
+
+    // --- Funzioni globali ---
+    window.complete = function(id) {
+      const task = userTasks.find(t => t.id === id);
+      if (task) task.done = true;
+      save();
+      render();
+      checkTodayNotifications();
+    };
+
+    window.remove = function(id) {
+      userTasks = userTasks.filter(t => t.id !== id);
+      save();
+      render();
+      checkTodayNotifications();
+    };
+
+    // --- Calendario ---
+    function renderCalendar() {
+      const today = new Date().toISOString().split("T")[0];
+      const todayItems = userTasks.filter(t => !t.done && t.date === today);
+      if (todayItems.length > 0) {
+        todayTasks.innerHTML = todayItems.map(t => `<div>📌 ${t.text}</div>`).join("");
+      } else {
+        todayTasks.innerHTML = "Nessun compito in programma per oggi.";
+      }
+    }
+
+    // --- Notifiche ---
+    function checkTodayNotifications() {
+      if (!notify.checked) return;
+
+      if (Notification.permission === "granted") {
+        const today = new Date().toISOString().split("T")[0];
+        const todayUndone = userTasks.filter(t => t.date === today && !t.done);
+        todayUndone.forEach(t => {
+          new Notification("⏰ Oggi: " + t.text, {
+            body: `Categoria: ${t.cat}`,
+            icon: "https://cdn-icons-png.flaticon.com/512/2973/2973880.png"
+          });
+        });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission();
+      }
+    }
+
+    // --- Formatta data ---
+    function formatDate(dateStr) {
+      return new Date(dateStr).toLocaleDateString("it-IT", {
+        day: "numeric",
+        month: "long"
+      });
+    }
+
+    // --- AVVIO ---
+    load();
+  </script>
+</body>
+</html>
