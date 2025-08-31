@@ -3,203 +3,223 @@
 <head>
   <meta charset="UTF-8" />
   <title>To-Do List - Utenti Separati</title>
-
-  <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#3498db">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
-          .then(reg => console.log('SW registrato'))
+          .then(() => console.log('Service Worker registrato'))
           .catch(err => console.log('Errore SW:', err));
       });
     }
   </script>
 
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; background: #f7f9fc; }
+    body { font-family: Arial, sans-serif; margin: 30px; background: #f7f9fc; color: #222; transition: background 0.3s, color 0.3s; }
     .hidden { display: none; }
-    .task { padding: 14px; margin: 8px 0; background: white; border-left: 5px solid #3498db; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .task { padding: 14px; margin: 8px 0; background: white; border-left: 5px solid #3498db; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: background 0.3s, color 0.3s; }
     .completed { opacity: 0.6; text-decoration: line-through; color: #888; }
-    input, button, select { padding: 10px; margin: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    input, button, select { padding: 10px; margin: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; transition: background 0.3s, color 0.3s, border 0.3s; }
     button { background: #3498db; color: white; border: none; cursor: pointer; }
     button:hover { background: #2980b9; }
     ul { list-style: none; }
-    .calendar { margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 10px; border: 1px solid #d0ebd0; }
+    .calendar { margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 10px; border: 1px solid #d0ebd0; transition: background 0.3s, color 0.3s; }
     .calendar h4 { margin-bottom: 10px; color: #2e7d32; }
     .user-info { font-size: 14px; color: #555; margin-bottom: 20px; }
-    @media (max-width: 600px) { .container, body { margin: 10px; font-size: 14px; } input, button { font-size: 16px; padding: 12px; } .task { flex-direction: column; align-items: flex-start; gap: 8px; } .task-actions { align-self: flex-end; } }
+
+    @media (max-width: 600px) { 
+      .container, body { margin: 10px; font-size: 14px; } 
+      input, button { font-size: 16px; padding: 12px; } 
+      .task { flex-direction: column; align-items: flex-start; gap: 8px; } 
+      .task-actions { align-self: flex-end; } 
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { background: #121212; color: #eee; }
+      .task { background: #1e1e1e; border-left-color: #3498db; box-shadow: 0 1px 3px rgba(255,255,255,0.1); }
+      input, button, select { background: #1e1e1e; color: #eee; border: 1px solid #555; }
+      .calendar { background: #1a2b1a; border-color: #2e7d32; }
+    }
   </style>
 </head>
 <body>
 
-  <!-- Schermata Registrazione -->
-  <div id="registration">
-    <h2>📝 Benvenuto! Registrati</h2>
-    <input type="text" id="usernameInput" placeholder="Il tuo nome" />
-    <button id="registerBtn">Inizia</button>
+<div id="registration">
+  <h2>📝 Benvenuto! Registrati</h2>
+  <input type="text" id="usernameInput" placeholder="Il tuo nome" />
+  <button id="registerBtn">Inizia</button>
+</div>
+
+<div id="app" class="hidden">
+  <h3>Ciao, <span id="greeting"></span>! 🌟</h3>
+  <div class="user-info">Utente: <strong><span id="userTag"></span></strong></div>
+  <button id="logout">← Cambia Utente</button>
+
+  <div style="margin: 15px 0;">
+    <label><input type="checkbox" id="notify" checked> 🔔 Abilita notifiche</label>
   </div>
 
-  <!-- Dashboard -->
-  <div id="app" class="hidden">
-    <h3>Ciao, <span id="greeting"></span>! 🌟</h3>
-    <div class="user-info">Utente: <strong><span id="userTag"></span></strong></div>
-    <button id="logout">← Cambia Utente</button>
-
-    <div style="margin: 15px 0;">
-      <label><input type="checkbox" id="notify" checked> 🔔 Abilita notifiche</label>
-    </div>
-
-    <div>
-      <input type="text" id="taskInput" placeholder="Nuovo compito" />
-      <input type="text" id="catInput" placeholder="Categoria (es. Lavoro)" />
-      <input type="date" id="dateInput" />
-      <button id="addBtn">➕ Aggiungi</button>
-    </div>
-
-    <ul id="list"></ul>
-
-    <div class="calendar">
-      <h4>📅 Promemoria di Oggi</h4>
-      <div id="todayTasks">Nessun compito in programma per oggi.</div>
-    </div>
+  <div>
+    <input type="text" id="taskInput" placeholder="Nuovo compito" />
+    <input type="text" id="catInput" placeholder="Categoria (es. Lavoro)" />
+    <input type="date" id="dateInput" />
+    <button id="addBtn">➕ Aggiungi</button>
   </div>
 
-  <script>
-    if (window.innerWidth < 768) {
-      setTimeout(() => { alert("💡 Per installare l'app: premi CONDIVIDI → AGGIUNGI A HOME (iPhone) o usa Chrome → Installa app (Android)"); }, 1000);
-    }
+  <ul id="list"></ul>
 
-    const registration = document.getElementById("registration");
-    const app = document.getElementById("app");
-    const usernameInput = document.getElementById("usernameInput");
-    const registerBtn = document.getElementById("registerBtn");
-    const greeting = document.getElementById("greeting");
-    const userTag = document.getElementById("userTag");
-    const logout = document.getElementById("logout");
-    const taskInput = document.getElementById("taskInput");
-    const catInput = document.getElementById("catInput");
-    const dateInput = document.getElementById("dateInput");
-    const addBtn = document.getElementById("addBtn");
-    const taskList = document.getElementById("list");
-    const todayTasks = document.getElementById("todayTasks");
-    const notify = document.getElementById("notify");
+  <div class="calendar">
+    <h4>📅 Promemoria di Oggi</h4>
+    <div id="todayTasks">Nessun compito in programma per oggi.</div>
+  </div>
 
-    let currentUser = null;
-    let userTasks = [];
+  <div style="margin-top:20px; padding:10px; border:1px solid #ccc; border-radius:8px;">
+    <h4>🤖 Assistente Virtuale</h4>
+    <input type="text" id="assistantInput" placeholder="Scrivi un comando..." style="width:70%">
+    <button id="assistantBtn">Invia</button>
+    <div id="assistantOutput" style="margin-top:10px; color:#555;"></div>
+  </div>
+</div>
 
-    // --- Dati demo automatizzati ---
-    if (!localStorage.getItem("todoAppData")) {
-      localStorage.setItem("todoAppData", JSON.stringify({
-        currentUser: null,
-        users: { "Demo": [{ id: Date.now(), text: "Compito di prova", cat: "Generale", date: new Date().toISOString().split("T")[0], done: false }] }
-      }));
-    }
+<script>
+  const registration = document.getElementById("registration");
+  const app = document.getElementById("app");
+  const usernameInput = document.getElementById("usernameInput");
+  const registerBtn = document.getElementById("registerBtn");
+  const greeting = document.getElementById("greeting");
+  const userTag = document.getElementById("userTag");
+  const logout = document.getElementById("logout");
+  const taskInput = document.getElementById("taskInput");
+  const catInput = document.getElementById("catInput");
+  const dateInput = document.getElementById("dateInput");
+  const addBtn = document.getElementById("addBtn");
+  const taskList = document.getElementById("list");
+  const todayTasks = document.getElementById("todayTasks");
+  const notify = document.getElementById("notify");
 
-    function load() {
-      const data = localStorage.getItem("todoAppData");
-      if (!data) return; 
-      try {
-        const parsed = JSON.parse(data);
-        const lastUser = parsed.currentUser;
-        if (parsed.users && lastUser && parsed.users[lastUser]) {
-          usernameInput.value = lastUser;
-          const confirmLogin = confirm(`Riprendi come "${lastUser}"?`);
-          if (confirmLogin) {
-            currentUser = lastUser;
-            userTasks = parsed.users[lastUser];
-            showApp();
-          }
+  const assistantInput = document.getElementById("assistantInput");
+  const assistantBtn = document.getElementById("assistantBtn");
+  const assistantOutput = document.getElementById("assistantOutput");
+
+  let currentUser = null;
+  let userTasks = [];
+
+  function load() {
+    const data = localStorage.getItem("todoAppData");
+    if (!data) return; 
+    try {
+      const parsed = JSON.parse(data);
+      const lastUser = parsed.currentUser;
+      if (parsed.users && lastUser && parsed.users[lastUser]) {
+        usernameInput.value = lastUser;
+        const confirmLogin = confirm(`Riprendi come "${lastUser}"?`);
+        if (confirmLogin) {
+          currentUser = lastUser;
+          userTasks = parsed.users[lastUser];
+          showApp();
         }
-      } catch (e) { console.error("Errore nel caricamento dei dati", e); }
-    }
+      }
+    } catch (e) { console.error(e); }
+  }
 
-    registerBtn.addEventListener("click", () => {
-      const name = usernameInput.value.trim();
-      if (!name) return alert("Inserisci un nome!");
-      const data = localStorage.getItem("todoAppData");
-      let appData = { currentUser: null, users: {} };
-      if (data) { try { appData = JSON.parse(data); } catch (e) { appData = { users: {} }; } }
-      if (!appData.users[name]) { appData.users[name] = []; }
-      currentUser = name;
-      userTasks = appData.users[name];
-      appData.currentUser = name;
-      localStorage.setItem("todoAppData", JSON.stringify(appData));
-      showApp();
+  registerBtn.addEventListener("click", () => {
+    const name = usernameInput.value.trim();
+    if (!name) return alert("Inserisci un nome!");
+    const data = localStorage.getItem("todoAppData");
+    let appData = { currentUser: null, users: {} };
+    if (data) { try { appData = JSON.parse(data); } catch (e) { appData = { users: {} }; } }
+    if (!appData.users[name]) appData.users[name] = [];
+    currentUser = name; userTasks = appData.users[name]; appData.currentUser = name;
+    localStorage.setItem("todoAppData", JSON.stringify(appData));
+    showApp();
+  });
+
+  function showApp() {
+    registration.classList.add("hidden");
+    app.classList.remove("hidden");
+    greeting.textContent = currentUser;
+    userTag.textContent = currentUser;
+    render();
+    checkTodayNotifications();
+  }
+
+  logout.addEventListener("click", () => { save(); localStorage.removeItem("todoUser"); location.reload(); });
+
+  addBtn.addEventListener("click", () => {
+    const text = taskInput.value.trim();
+    const cat = catInput.value.trim() || "Generale";
+    const date = dateInput.value || new Date().toISOString().split("T")[0];
+    if (!text) return alert("Scrivi un compito!");
+    userTasks.push({ id: Date.now(), text, cat, date, done: false });
+    save(); render(); checkTodayNotifications();
+    taskInput.value=""; catInput.value="";
+  });
+
+  function save() {
+    const data = localStorage.getItem("todoAppData");
+    let appData = { users: {} };
+    if (data) { try { appData = JSON.parse(data); } catch(e){} }
+    appData.users[currentUser] = userTasks; appData.currentUser = currentUser;
+    localStorage.setItem("todoAppData", JSON.stringify(appData));
+  }
+
+  function render() {
+    taskList.innerHTML = "";
+    userTasks.filter(t=>!t.done).forEach(t=>{
+      const li=document.createElement("li"); li.className="task";
+      li.innerHTML=`<span><strong>${t.text}</strong> <em style="color:#555; font-size:0.9em;"> | 🏷️ ${t.cat} | 📅 ${formatDate(t.date)}</em></span>
+        <div><button onclick="complete(${t.id})">✅ Completa</button> <button onclick="remove(${t.id})">🗑️ Elimina</button></div>`;
+      taskList.appendChild(li);
     });
+    renderCalendar();
+  }
 
-    function showApp() {
-      registration.classList.add("hidden");
-      app.classList.remove("hidden");
-      greeting.textContent = currentUser;
-      userTag.textContent = currentUser;
-      render();
-      checkTodayNotifications();
-    }
+  window.complete=id=>{ const t=userTasks.find(x=>x.id===id); if(t) t.done=true; save(); render(); checkTodayNotifications(); };
+  window.remove=id=>{ userTasks=userTasks.filter(x=>x.id!==id); save(); render(); checkTodayNotifications(); };
 
-    logout.addEventListener("click", () => { save(); localStorage.removeItem("todoUser"); location.reload(); });
+  function renderCalendar() {
+    const today = new Date().toISOString().split("T")[0];
+    const items = userTasks.filter(t=>!t.done && t.date===today);
+    todayTasks.innerHTML = items.length>0? items.map(t=>`📌 ${t.text}`).join("<br>") : "Nessun compito in programma per oggi.";
+  }
 
-    addBtn.addEventListener("click", () => {
-      const text = taskInput.value.trim();
-      const cat = catInput.value.trim() || "Generale";
-      const date = dateInput.value || new Date().toISOString().split("T")[0];
-      if (!text) return alert("Scrivi un compito!");
-      userTasks.push({ id: Date.now(), text, cat, date, done: false });
-      save(); render(); checkTodayNotifications();
-      taskInput.value = ""; catInput.value = "";
-    });
-
-    function save() {
-      const data = localStorage.getItem("todoAppData");
-      let appData = { users: {} };
-      if (data) { try { appData = JSON.parse(data); } catch (e) {} }
-      appData.users[currentUser] = userTasks;
-      appData.currentUser = currentUser;
-      localStorage.setItem("todoAppData", JSON.stringify(appData));
-    }
-
-    function render() {
-      taskList.innerHTML = "";
-      const activeTasks = userTasks.filter(t => !t.done);
-      activeTasks.forEach(t => {
-        const li = document.createElement("li");
-        li.className = "task";
-        li.innerHTML = `<span><strong>${t.text}</strong> <em style="color:#555; font-size:0.9em;"> | 🏷️ ${t.cat} | 📅 ${formatDate(t.date)}</em></span>
-        <div><button onclick="complete(${t.id})">✅ Completa</button><button onclick="remove(${t.id})">🗑️ Elimina</button></div>`;
-        taskList.appendChild(li);
-      });
-      renderCalendar();
-    }
-
-    window.complete = function(id) { const task = userTasks.find(t => t.id === id); if (task) task.done = true; save(); render(); checkTodayNotifications(); };
-    window.remove = function(id) { userTasks = userTasks.filter(t => t.id !== id); save(); render(); checkTodayNotifications(); };
-
-    function renderCalendar() {
+  function checkTodayNotifications() {
+    if(!notify.checked) return;
+    if(Notification.permission==="granted"){
       const today = new Date().toISOString().split("T")[0];
-      const todayItems = userTasks.filter(t => !t.done && t.date === today);
-      todayTasks.innerHTML = todayItems.length > 0 ? todayItems.map(t => `<div>📌 ${t.text}</div>`).join("") : "Nessun compito in programma per oggi.";
+      userTasks.filter(t=>t.date===today && !t.done).forEach(t=>{
+        new Notification("⏰ Oggi: "+t.text, {body:`Categoria: ${t.cat}`, icon:"icon-192.png"});
+      });
+    } else if(Notification.permission!=="denied"){ Notification.requestPermission(); }
+  }
+
+  function formatDate(d){ return new Date(d).toLocaleDateString("it-IT",{day:"numeric", month:"long"}); }
+
+  assistantBtn.addEventListener("click", ()=>{
+    const cmd=assistantInput.value.trim().toLowerCase();
+    let res="🤔 Non ho capito. Prova con: 'oggi', 'lista', 'aggiungi [compito]'";
+    if(cmd.includes("oggi")){
+      const today=new Date().toISOString().split("T")[0];
+      const items=userTasks.filter(t=>!t.done && t.date===today);
+      res=items.length>0? "📌 Compiti di oggi:\n"+items.map(t=>t.text).join("\n"):"✅ Nessun compito oggi!";
+    }else if(cmd.includes("lista")){
+      res=userTasks.length>0? "📝 Tutti i compiti:\n"+userTasks.map(t=>`${t.done?"✅":"❌"} ${t.text}`).join("\n"):"La lista è vuota.";
+    }else if(cmd.startsWith("aggiungi ")){
+      const text=cmd.replace("aggiungi ","");
+      if(text){ userTasks.push({id:Date.now(), text, cat:"Generale", date:new Date().toISOString().split("T")[0], done:false}); save(); render();
+        res=`✅ Compito aggiunto: ${text}`;
+      }
     }
+    assistantOutput.textContent=res;
+    assistantInput.value="";
+  });
 
-    function checkTodayNotifications() {
-      if (!notify.checked) return;
-      if (Notification.permission === "granted") {
-        const today = new Date().toISOString().split("T")[0];
-        const todayUndone = userTasks.filter(t => t.date === today && !t.done);
-        todayUndone.forEach(t => {
-          new Notification("⏰ Oggi: " + t.text, { body: `Categoria: ${t.cat}`, icon: "icon-192.png" });
-        });
-      } else if (Notification.permission !== "denied") { Notification.requestPermission(); }
-    }
-
-    function formatDate(dateStr) { return new Date(dateStr).toLocaleDateString("it-IT", { day: "numeric", month: "long" }); }
-
-    load();
-  </script>
+  load();
+</script>
 </body>
 </html>
